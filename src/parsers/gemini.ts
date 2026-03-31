@@ -8,7 +8,6 @@ import type {
   ToolUsageSummary,
   UnifiedSession,
 } from "../types/index.js";
-import { safeDate } from "../utils/parser-helpers.js";
 import type { GeminiSession } from "../types/schemas.js";
 import { GeminiSessionSchema } from "../types/schemas.js";
 import { extractTextFromBlocks } from "../utils/content.js";
@@ -381,6 +380,11 @@ export async function parseGeminiSessions(): Promise<UnifiedSession[]> {
       const content = fs.readFileSync(filePath, "utf8");
       const lines = content.split("\n").length;
 
+      const createdAt = new Date(session.startTime);
+      const updatedAt = new Date(session.lastUpdated);
+      const hasValidDates =
+        !isNaN(createdAt.getTime()) && !isNaN(updatedAt.getTime());
+
       sessions.push({
         id: session.sessionId,
         source: "gemini",
@@ -388,8 +392,8 @@ export async function parseGeminiSessions(): Promise<UnifiedSession[]> {
         repo: "",
         lines,
         bytes: fileStats.size,
-        createdAt: safeDate(session.startTime, fileStats.birthtime),
-        updatedAt: safeDate(session.lastUpdated, fileStats.mtime),
+        createdAt: hasValidDates ? createdAt : fileStats.birthtime,
+        updatedAt: hasValidDates ? updatedAt : fileStats.mtime,
         originalPath: filePath,
         summary: summary || undefined,
       });
