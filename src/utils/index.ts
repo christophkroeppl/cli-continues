@@ -119,11 +119,14 @@ export async function buildIndex(force = false): Promise<UnifiedSession[]> {
     )
     .flatMap((r) => r.value);
 
-  // Sort by updated time (newest first)
-  allSessions.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  // Sort by updated time (newest first), filtering out sessions with invalid dates
+  const validSessions = allSessions.filter(
+    (s) => !isNaN(s.updatedAt.getTime()) && !isNaN(s.createdAt.getTime())
+  );
+  validSessions.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 
   // Write to index file — first line is the env fingerprint
-  const lines = allSessions.map((s) =>
+  const lines = validSessions.map((s) =>
     JSON.stringify({
       ...s,
       createdAt: s.createdAt.toISOString(),
