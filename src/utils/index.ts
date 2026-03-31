@@ -1,21 +1,25 @@
-import { createHash } from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
-import { logger } from '../logger.js';
-import { adapters } from '../parsers/registry.js';
-import type { VerbosityConfig } from '../config/index.js';
-import type { SessionContext, SessionSource, UnifiedSession } from '../types/index.js';
-import { homeDir } from './parser-helpers.js';
+import { createHash } from "crypto";
+import * as fs from "fs";
+import * as path from "path";
+import { logger } from "../logger.js";
+import { adapters } from "../parsers/registry.js";
+import type { VerbosityConfig } from "../config/index.js";
+import type {
+  SessionContext,
+  SessionSource,
+  UnifiedSession,
+} from "../types/index.js";
+import { homeDir } from "./parser-helpers.js";
 
-const CONTINUES_DIR = path.join(homeDir(), '.continues');
-const INDEX_FILE = path.join(CONTINUES_DIR, 'sessions.jsonl');
-const CONTEXTS_DIR = path.join(CONTINUES_DIR, 'contexts');
+const CONTINUES_DIR = path.join(homeDir(), ".continues");
+const INDEX_FILE = path.join(CONTINUES_DIR, "sessions.jsonl");
+const CONTEXTS_DIR = path.join(CONTINUES_DIR, "contexts");
 
 // Cache TTL in milliseconds (5 minutes)
 const INDEX_TTL = 5 * 60 * 1000;
 
 // Prefix for the env fingerprint line stored in the index file
-const ENV_FINGERPRINT_PREFIX = '#env:';
+const ENV_FINGERPRINT_PREFIX = "#env:";
 
 /**
  * Build a fingerprint of environment variables that affect parser storage paths.
@@ -27,12 +31,12 @@ function computeEnvFingerprint(): string {
   for (const adapter of Object.values(adapters)) {
     if (adapter.envVar && !seen.has(adapter.envVar)) {
       seen.add(adapter.envVar);
-      const val = process.env[adapter.envVar] || '';
+      const val = process.env[adapter.envVar] || "";
       parts.push(`${adapter.envVar}=${val}`);
     }
   }
   // Hash to avoid leaking user-specific paths in the on-disk cache
-  return createHash('sha256').update(parts.sort().join('|')).digest('hex');
+  return createHash("sha256").update(parts.sort().join("|")).digest("hex");
 }
 
 /**
@@ -40,14 +44,14 @@ function computeEnvFingerprint(): string {
  */
 function readStoredFingerprint(): string | null {
   try {
-    const content = fs.readFileSync(INDEX_FILE, 'utf8');
-    const firstLine = content.slice(0, content.indexOf('\n'));
+    const content = fs.readFileSync(INDEX_FILE, "utf8");
+    const firstLine = content.slice(0, content.indexOf("\n"));
     if (firstLine.startsWith(ENV_FINGERPRINT_PREFIX)) {
       return firstLine.slice(ENV_FINGERPRINT_PREFIX.length);
     }
     return null;
   } catch (err) {
-    logger.debug('index: failed to read stored fingerprint', err);
+    logger.debug("index: failed to read stored fingerprint", err);
     return null;
   }
 }
@@ -64,7 +68,7 @@ export function ensureDirectories(): void {
       fs.mkdirSync(CONTEXTS_DIR, { recursive: true });
     }
   } catch (err) {
-    logger.debug('index: failed to create directories', err);
+    logger.debug("index: failed to create directories", err);
   }
 }
 
@@ -80,13 +84,13 @@ export function indexNeedsRebuild(): boolean {
     // Rebuild if env vars affecting storage paths have changed
     const stored = readStoredFingerprint();
     if (stored !== computeEnvFingerprint()) {
-      logger.debug('index: env fingerprint changed, rebuilding');
+      logger.debug("index: env fingerprint changed, rebuilding");
       return true;
     }
 
     return false;
   } catch (err) {
-    logger.debug('index: cache stale check failed', err);
+    logger.debug("index: cache stale check failed", err);
     return true; // File doesn't exist or can't be read
   }
 }
@@ -104,10 +108,15 @@ export async function buildIndex(force = false): Promise<UnifiedSession[]> {
 
   // Parse all sessions from all sources in parallel — use allSettled so one
   // broken parser doesn't crash the entire CLI
-  const results = await Promise.allSettled(Object.values(adapters).map((a) => a.parseSessions()));
+  const results = await Promise.allSettled(
+    Object.values(adapters).map((a) => a.parseSessions())
+  );
 
   const allSessions = results
-    .filter((r): r is PromiseFulfilledResult<UnifiedSession[]> => r.status === 'fulfilled')
+    .filter(
+      (r): r is PromiseFulfilledResult<UnifiedSession[]> =>
+        r.status === "fulfilled"
+    )
     .flatMap((r) => r.value);
 
   // Sort by updated time (newest first)
@@ -119,11 +128,11 @@ export async function buildIndex(force = false): Promise<UnifiedSession[]> {
       ...s,
       createdAt: s.createdAt.toISOString(),
       updatedAt: s.updatedAt.toISOString(),
-    }),
+    })
   );
 
   const fingerprint = `${ENV_FINGERPRINT_PREFIX}${computeEnvFingerprint()}`;
-  fs.writeFileSync(INDEX_FILE, fingerprint + '\n' + lines.join('\n') + '\n');
+  fs.writeFileSync(INDEX_FILE, fingerprint + "\n" + lines.join("\n") + "\n");
 
   return allSessions;
 }
@@ -133,29 +142,34 @@ export async function buildIndex(force = false): Promise<UnifiedSession[]> {
  */
 export function loadIndex(): UnifiedSession[] {
   try {
-    const content = fs.readFileSync(INDEX_FILE, 'utf8');
+    const content = fs.readFileSync(INDEX_FILE, "utf8");
     const lines = content
       .trim()
-      .split('\n')
+      .split("\n")
       .filter((l) => l && !l.startsWith(ENV_FINGERPRINT_PREFIX));
 
     return lines.flatMap((line) => {
       try {
         const parsed = JSON.parse(line);
+        const createdAt = new Date(parsed.createdAt);
+        const updatedAt = new Date(parsed.updatedAt);
+        if (isNaN(createdAt.getTime()) || isNaN(updatedAt.getTime())) {
+          return [];
+        }
         return [
           {
             ...parsed,
-            createdAt: new Date(parsed.createdAt),
-            updatedAt: new Date(parsed.updatedAt),
+            createdAt,
+            updatedAt,
           } as UnifiedSession,
         ];
       } catch (err) {
-        logger.debug('index: skipping corrupted line in cache', err);
+        logger.debug("index: skipping corrupted line in cache", err);
         return []; // Skip corrupted lines
       }
     });
   } catch (err) {
-    logger.debug('index: cannot read cache file', INDEX_FILE, err);
+    logger.debug("index: cannot read cache file", INDEX_FILE, err);
     return []; // File doesn't exist or can't be read
   }
 }
@@ -163,14 +177,19 @@ export function loadIndex(): UnifiedSession[] {
 /**
  * Get all sessions (auto-rebuild if stale)
  */
-export async function getAllSessions(forceRebuild = false): Promise<UnifiedSession[]> {
+export async function getAllSessions(
+  forceRebuild = false
+): Promise<UnifiedSession[]> {
   return buildIndex(forceRebuild);
 }
 
 /**
  * Get sessions filtered by source
  */
-export async function getSessionsBySource(source: SessionSource, forceRebuild = false): Promise<UnifiedSession[]> {
+export async function getSessionsBySource(
+  source: SessionSource,
+  forceRebuild = false
+): Promise<UnifiedSession[]> {
   const all = await getAllSessions(forceRebuild);
   return all.filter((s) => s.source === source);
 }
@@ -186,7 +205,10 @@ export async function findSession(id: string): Promise<UnifiedSession | null> {
 /**
  * Extract context from a session based on its source
  */
-export async function extractContext(session: UnifiedSession, config?: VerbosityConfig): Promise<SessionContext> {
+export async function extractContext(
+  session: UnifiedSession,
+  config?: VerbosityConfig
+): Promise<SessionContext> {
   const adapter = adapters[session.source];
   if (!adapter) throw new Error(`Unknown session source: ${session.source}`);
   return adapter.extractContext(session, config);
@@ -211,7 +233,7 @@ export function getCachedContext(sessionId: string): string | null {
   const contextPath = path.join(CONTEXTS_DIR, `${sessionId}.md`);
 
   if (fs.existsSync(contextPath)) {
-    return fs.readFileSync(contextPath, 'utf8');
+    return fs.readFileSync(contextPath, "utf8");
   }
 
   return null;
@@ -223,10 +245,12 @@ export function getCachedContext(sessionId: string): string | null {
 export function formatSession(session: UnifiedSession): string {
   const tag = `[${session.source}]`;
   const source = tag.padEnd(10);
-  const date = session.updatedAt.toISOString().slice(0, 16).replace('T', ' ');
-  const repo = (session.repo || session.cwd.split('/').pop() || '').slice(0, 20).padEnd(20);
-  const branch = (session.branch || '').slice(0, 15).padEnd(15);
-  const summary = (session.summary || '').slice(0, 40);
+  const date = session.updatedAt.toISOString().slice(0, 16).replace("T", " ");
+  const repo = (session.repo || session.cwd.split("/").pop() || "")
+    .slice(0, 20)
+    .padEnd(20);
+  const branch = (session.branch || "").slice(0, 15).padEnd(15);
+  const summary = (session.summary || "").slice(0, 40);
   const id = session.id.slice(0, 12);
 
   return `${source} ${date}  ${repo} ${branch} ${summary.padEnd(40)} ${id}`;
@@ -242,7 +266,7 @@ export function sessionsToJsonl(sessions: UnifiedSession[]): string {
         ...s,
         createdAt: s.createdAt.toISOString(),
         updatedAt: s.updatedAt.toISOString(),
-      }),
+      })
     )
-    .join('\n');
+    .join("\n");
 }
