@@ -1,13 +1,13 @@
-import * as os from 'os';
-import type { ConversationMessage } from '../types/index.js';
-import { extractRepoFromGitUrl } from './content.js';
+import * as os from "os";
+import type { ConversationMessage } from "../types/index.js";
+import { extractRepoFromGitUrl } from "./content.js";
 
 /**
  * Clean and truncate text for use as a session summary.
  * Collapses whitespace and newlines into a single line.
  */
 export function cleanSummary(text: string, maxLen = 50): string {
-  return text.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim().slice(0, maxLen);
+  return text.replace(/\n/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLen);
 }
 
 /**
@@ -15,12 +15,12 @@ export function cleanSummary(text: string, maxLen = 50): string {
  * Returns the last two path components joined with '/'.
  */
 export function extractRepoFromCwd(cwd: string): string {
-  if (!cwd) return '';
-  const parts = cwd.split('/').filter(Boolean);
+  if (!cwd) return "";
+  const parts = cwd.split("/").filter(Boolean);
   if (parts.length >= 2) {
-    return parts.slice(-2).join('/');
+    return parts.slice(-2).join("/");
   }
-  return parts[parts.length - 1] || '';
+  return parts[parts.length - 1] || "";
 }
 
 /**
@@ -32,7 +32,7 @@ export function extractRepo(opts: { gitUrl?: string; cwd?: string }): string {
     const fromUrl = extractRepoFromGitUrl(opts.gitUrl);
     if (fromUrl) return fromUrl;
   }
-  return extractRepoFromCwd(opts.cwd || '');
+  return extractRepoFromCwd(opts.cwd || "");
 }
 
 /**
@@ -44,19 +44,31 @@ export function homeDir(): string {
 }
 
 /**
+ * Safely create a Date from a value, returning a fallback if the result is invalid.
+ * Prevents RangeError: Invalid time value from propagating through the session pipeline.
+ */
+export function safeDate(value: unknown, fallback: Date): Date {
+  const date = new Date(value as string | number | Date);
+  return isNaN(date.getTime()) ? fallback : date;
+}
+
+/**
  * Trim messages to a balanced tail: keep the last `maxCount` messages
  * but ensure at least one user message is included.
  * Used by multiple parsers for the handoff conversation section.
  */
-export function trimMessages(messages: ConversationMessage[], maxCount = 10): ConversationMessage[] {
+export function trimMessages(
+  messages: ConversationMessage[],
+  maxCount = 10
+): ConversationMessage[] {
   const tail = messages.slice(-maxCount);
-  const hasUser = tail.some((m) => m.role === 'user');
+  const hasUser = tail.some((m) => m.role === "user");
 
   if (hasUser || messages.length <= maxCount) return tail;
 
   // Include the last user message + everything after it, capped at maxCount
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'user') {
+    if (messages[i].role === "user") {
       return messages.slice(i, i + maxCount);
     }
   }
